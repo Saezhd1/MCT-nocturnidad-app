@@ -18,13 +18,24 @@ def _split_pair(pair_str):
     return _time_from_str(a), _time_from_str(b)
 
 def _franjas_dt(fecha):
-    # Construye las franjas con fecha concreta y con cruce de día cuando aplique
-    f1_ini = time(22, 0); f1_fin = time(0, 59)
-    f2_ini = time(4, 0);  f2_fin = time(6, 0)
-    # f1 cruza medianoche: inicio en fecha, fin en fecha+1
+    # Franja nocturna 1: 22:00–00:59 (cruza medianoche)
+    f1_ini = time(22, 0)
+    f1_fin = time(0, 59)
+    f2_ini = time(4, 0)
+    f2_fin = time(6, 0)
+
+    # Inicio de franja 1 en el mismo día
+    f1_ini_dt = construir_dt(fecha, f1_ini)
+    # Fin de franja 1 al día siguiente (porque cruza medianoche)
+    f1_fin_dt = construir_dt(fecha, f1_fin) + timedelta(days=1)
+
+    # Franja 2 en el mismo día
+    f2_ini_dt = construir_dt(fecha, f2_ini)
+    f2_fin_dt = construir_dt(fecha, f2_fin)
+
     return [
-        (construir_dt(fecha, f1_ini), construir_dt(fecha, f1_fin).replace(day=fecha.day) if f1_fin > f1_ini else construir_dt(fecha, f1_fin).replace(day=fecha.day+1)),
-        (construir_dt(fecha, f2_ini), construir_dt(fecha, f2_fin))
+        (f1_ini_dt, f1_fin_dt),
+        (f2_ini_dt, f2_fin_dt)
     ]
 
 def calcular_nocturnidad_por_dia(registros):
@@ -61,4 +72,5 @@ def calcular_nocturnidad_por_dia(registros):
             'minutos_nocturnos': minutos,
             'importe': f"{importe:.2f}"
         })
+
     return resultados
