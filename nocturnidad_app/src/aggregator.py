@@ -3,7 +3,7 @@ from collections import defaultdict
 def agregar_resumen(resultados):
     """
     Construye resumen mensual y global a partir de los registros procesados.
-    Cada registro debe ser un dict con al menos:
+    Cada registro debe ser un dict con:
       - 'fecha' en formato DD/MM/AAAA
       - 'minutos' (int)
       - 'importe' (float)
@@ -15,7 +15,6 @@ def agregar_resumen(resultados):
     total_dias = 0
 
     for r in resultados:
-        # Asegurar que r es un dict
         if not isinstance(r, dict):
             continue
 
@@ -27,12 +26,10 @@ def agregar_resumen(resultados):
         if len(partes) < 3:
             continue
 
-        dia, mes, anio = partes[0], partes[1], partes[2]
-
+        mes, anio = partes[1], partes[2]
         minutos = r.get("minutos", 0)
         importe = r.get("importe", 0.0)
 
-        # Solo contar si hay minutos nocturnos > 0
         if minutos > 0:
             clave = f"{mes}/{anio}"
             resumen_mensual[clave]["minutos"] += minutos
@@ -43,7 +40,6 @@ def agregar_resumen(resultados):
             total_importe += importe
             total_dias += 1
 
-    # Convertir a lista ordenada por mes/año
     resumen_mensual_list = []
     for clave, datos in sorted(resumen_mensual.items()):
         resumen_mensual_list.append({
