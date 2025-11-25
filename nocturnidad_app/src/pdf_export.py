@@ -10,14 +10,8 @@ def _tabla_dias(resultados_por_pdf):
         fn = doc['filename']
         for d in doc['dias']:
             if d['minutos_nocturnos'] > 0:
-                rows.append([
-                    fn,
-                    d['fecha'],
-                    d['hi'],
-                    d['hf'],
-                    str(d['minutos_nocturnos']),
-                    d['importe']
-                ])
+                rows.append([fn, d['fecha'], d['hi'], d['hf'],
+                             str(d['minutos_nocturnos']), d['importe']])
     return rows
 
 def _tabla_mes(resumen):
@@ -39,12 +33,13 @@ def exportar_pdf_informe(empleado, nombre, resultados, resumen):
     styles = getSampleStyleSheet()
     story = []
 
-    # Título e identificación
-    title = Paragraph("Informe de nocturnidad", styles['Title'])
-    ident = Paragraph(f"Número de empleado: {empleado} | Nombre: {nombre}", styles['Normal'])
-    story += [title, Spacer(1, 12), ident, Spacer(1, 24)]
+    # Cabecera
+    story += [Paragraph("Informe de nocturnidad", styles['Title']),
+              Spacer(1, 12),
+              Paragraph(f"Empleado: {empleado} | Nombre: {nombre}", styles['Normal']),
+              Spacer(1, 24)]
 
-    # Tabla de detalle por tramos
+    # Tabla detalle
     dias_tbl = Table(_tabla_dias(resultados))
     dias_tbl.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#eeeeee')),
@@ -52,10 +47,10 @@ def exportar_pdf_informe(empleado, nombre, resultados, resumen):
         ('ALIGN', (4,1), (5,-1), 'RIGHT'),
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold')
     ]))
-    story += [Paragraph("Detalle por tramos (solo tramos con nocturnidad)", styles['Heading2']),
+    story += [Paragraph("Detalle por tramos", styles['Heading2']),
               Spacer(1, 6), dias_tbl, Spacer(1, 18)]
 
-    # Tabla resumen mensual
+    # Tabla mensual
     mes_tbl = Table(_tabla_mes(resumen))
     mes_tbl.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#eeeeee')),
@@ -66,7 +61,7 @@ def exportar_pdf_informe(empleado, nombre, resultados, resumen):
     story += [Paragraph("Resumen mensual", styles['Heading2']),
               Spacer(1, 6), mes_tbl, Spacer(1, 18)]
 
-    # Tabla resumen global
+    # Tabla global
     global_tbl = Table(_tabla_global(resumen))
     global_tbl.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#eeeeee')),
@@ -77,6 +72,7 @@ def exportar_pdf_informe(empleado, nombre, resultados, resumen):
     story += [Paragraph("Resumen global", styles['Heading2']),
               Spacer(1, 6), global_tbl]
 
+    # Construir PDF
     doc.build(story)
     buffer.seek(0)
     return buffer
