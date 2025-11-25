@@ -10,7 +10,9 @@ def _tabla_dias(resultados_por_pdf):
     for doc in resultados_por_pdf:
         fn = doc['filename']
         for d in doc['dias']:
-            rows.append([fn, d['fecha'], str(d['minutos_nocturnos']), d['importe']])
+            # 🔎 Filtramos: solo añadimos si minutos_nocturnos > 0
+            if d['minutos_nocturnos'] > 0:
+                rows.append([fn, d['fecha'], str(d['minutos_nocturnos']), d['importe']])
     return rows
 
 def _tabla_mes(resumen):
@@ -34,7 +36,7 @@ def exportar_pdf_informe(empleado, nombre, resultados, resumen):
     ident = Paragraph(f"Número de empleado: {empleado} &nbsp;&nbsp;|&nbsp;&nbsp; Nombre: {nombre}", styles['Normal'])
     story += [title, Spacer(1, 12), ident, Spacer(1, 24)]
 
-    # Tabla por días
+    # Tabla por días (ya filtrada)
     dias_tbl = Table(_tabla_dias(resultados))
     dias_tbl.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#eeeeee')),
@@ -42,7 +44,7 @@ def exportar_pdf_informe(empleado, nombre, resultados, resumen):
         ('ALIGN', (2,1), (3,-1), 'RIGHT'),
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold')
     ]))
-    story += [Paragraph("Detalle por día", styles['Heading2']), Spacer(1, 6), dias_tbl, Spacer(1, 18)]
+    story += [Paragraph("Detalle por día (solo días con nocturnidad)", styles['Heading2']), Spacer(1, 6), dias_tbl, Spacer(1, 18)]
 
     # Tabla por mes
     mes_tbl = Table(_tabla_mes(resumen))
