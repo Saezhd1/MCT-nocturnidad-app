@@ -1,15 +1,25 @@
 from datetime import datetime
 
 def calcular_nocturnidad_por_dia(registros):
+    """
+    Calcula minutos nocturnos e importe por día según HI/HF.
+    Ahora soporta múltiples tramos por día (ej. "13:48 17:07" vs "16:24 21:48").
+    """
     resultados = []
     for r in registros:
+        fecha = r["fecha"]
+        hi = r["hi"]
+        hf = r["hf"]
+
         try:
-            hi = datetime.strptime(r["hi"], "%H:%M")
-            hf = datetime.strptime(r["hf"], "%H:%M")
+            hi_dt = datetime.strptime(hi, "%H:%M")
+            hf_dt = datetime.strptime(hf, "%H:%M")
         except Exception:
             continue
 
         minutos_nocturnos = 0
+
+        # Tramos nocturnos oficiales
         tramos = [
             (datetime.strptime("22:00", "%H:%M"), datetime.strptime("23:59", "%H:%M")),
             (datetime.strptime("00:00", "%H:%M"), datetime.strptime("00:59", "%H:%M")),
@@ -17,13 +27,13 @@ def calcular_nocturnidad_por_dia(registros):
         ]
 
         for inicio, fin in tramos:
-            if hi <= fin and hf >= inicio:
-                overlap_start = max(hi, inicio)
-                overlap_end = min(hf, fin)
+            if hi_dt <= fin and hf_dt >= inicio:
+                overlap_start = max(hi_dt, inicio)
+                overlap_end = min(hf_dt, fin)
                 if overlap_start < overlap_end:
                     minutos_nocturnos += int((overlap_end - overlap_start).total_seconds() / 60)
 
-        fecha = r["fecha"]
+        # Tarifa según fecha
         try:
             fecha_dt = datetime.strptime(fecha, "%d/%m/%Y")
         except Exception:
@@ -34,8 +44,8 @@ def calcular_nocturnidad_por_dia(registros):
 
         resultados.append({
             "fecha": fecha,
-            "hi": r["hi"],
-            "hf": r["hf"],
+            "hi": hi,
+            "hf": hf,
             "minutos_nocturnos": minutos_nocturnos,
             "importe": f"{importe:.2f}"
         })
