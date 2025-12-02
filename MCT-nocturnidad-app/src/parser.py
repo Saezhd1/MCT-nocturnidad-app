@@ -4,13 +4,9 @@ def _in_range(xmid, xr, tol=2):
     return xr[0] - tol <= xmid <= xr[1] + tol
 
 def _find_columns(page):
-    """
-    Encuentra rangos X para columnas clave. Prioriza cabeceras reales; si falla, usa rangos fijos
-    ajustados a este modelo de TITSA.
-    """
     words = page.extract_words(use_text_flow=True)
     fecha_x = hi_x = hf_x = None
-    header_bottom = page.bbox[1] + 40  # altura aproximada bajo cabecera
+    header_bottom = page.bbox[1] + 40
 
     for w in words:
         t = (w.get("text") or "").strip().lower()
@@ -21,7 +17,6 @@ def _find_columns(page):
         elif t == "hf":
             hf_x = (w["x0"], w["x1"]); header_bottom = max(header_bottom, w["bottom"])
 
-    # Fallback “hardcodeado” para este modelo si no encuentra cabeceras
     if not (fecha_x and hi_x and hf_x):
         x0_page, x1_page = page.bbox[0], page.bbox[2]
         width = x1_page - x0_page
@@ -32,18 +27,12 @@ def _find_columns(page):
     return {"fecha": fecha_x, "hi": hi_x, "hf": hf_x, "header_bottom": header_bottom}
 
 def _normalize_hour(h):
-    """
-    Normaliza horas especiales:
-    - '00:59' se interpreta como '24:59'
-    - Cualquier hora >= 24:XX se convierte a 00:XX (manteniendo la fecha)
-    """
     h = h.strip()
     if not h or ":" not in h:
         return h
     try:
         hh, mm = h.split(":")
-        hh = int(hh)
-        mm = int(mm)
+        hh, mm = int(hh), int(mm)
     except ValueError:
         return h
 
@@ -53,10 +42,40 @@ def _normalize_hour(h):
 
     # Caso general: si hora >= 24, restamos 24
     if hh >= 24:
-        hh = hh - 24
+        hh -= 24
         return f"{hh:02d}:{mm:02d}"
-
     return f"{hh:02d}:{mm:02d}"
+
+def _to_minutes(h):
+    if not h or ":" not in h:
+        return None
+    hh, mm = h.split(":")
+    hh, mm = int(hh), int(mm)
+    return hh * 60 + mm
+
+def nocturnity_minutes(hi, hf):
+    hi_min = _to_minutes(_normalize_hour(hi))
+    hf_min = _to_minutes(_normalize_hour(hf))
+    if hi_min is None or hf_min is None:
+        return 0
+
+    # Si el rango cruza medianoche
+    if hf_min < hi_min:
+        hf_min += 24 * 60
+
+    nocturnity_ranges = [
+        (240, 360),    # 04:00–06:00
+        (1320, 1440),  # 22:00–23:59
+        (1440, 1500),  # 24:00–24:59
+    ]
+
+    total = 0
+    for start, end in nocturnity_ranges:
+        overlap_start = max(hi_min, start)
+        overlap_end = min(hf_min, end)
+        if overlap_end > overlap_start:
+            total += overlap_end - overlap_start
+    return total
 
 def parse_pdf(file):
     registros = []
@@ -67,7 +86,6 @@ def parse_pdf(file):
                 cols = _find_columns(page)
                 words = page.extract_words(x_tolerance=2, y_tolerance=2, use_text_flow=False)
 
-                # Agrupar por línea
                 lines = {}
                 for w in words:
                     if w["top"] <= cols["header_bottom"]:
@@ -77,8 +95,8 @@ def parse_pdf(file):
 
                 for y in sorted(lines.keys()):
                     row_words = sorted(lines[y], key=lambda k: k["x0"])
-
                     fecha_tokens, hi_tokens, hf_tokens = [], [], []
+
                     for w in row_words:
                         t = (w.get("text") or "").strip()
                         xmid = (w["x0"] + w["x1"]) / 2.0
@@ -98,35 +116,23 @@ def parse_pdf(file):
                     elif fecha_val:
                         last_fecha = fecha_val
 
-                    if not (hi_raw or hf_raw):
-                        continue
-
                     hi_list = [_normalize_hour(x) for x in hi_raw.split() if ":" in x and x.count(":") == 1]
                     hf_list = [_normalize_hour(x) for x in hf_raw.split() if ":" in x and x.count(":") == 1]
 
-                    if not hi_list or not hf_list:
-                        continue
+                    hi_val = hi_list[0] if hi_list else ""
+                    hf_val = hf_list[-1] if hf_list else ""
 
-                    principal_hi = hi_list[0]
-                    principal_hf = hf_list[-1]
                     registros.append({
                         "fecha": fecha_val,
-                        "hi": principal_hi,
-                        "hf": principal_hf,
-                        "principal": True
+                        "hi": hi_val,
+                        "hf": hf_val,
+                        "nocturnidad_minutos": nocturnity_minutes(hi_val, hf_val),
+                        "linea_completa": " ".join([w["text"] for w in row_words])
                     })
-
-                    if len(hi_list) >= 2 and len(hf_list) >= 2:
-                        registros.append({
-                            "fecha": fecha_val,
-                            "hi": hi_list[1],
-                            "hf": hf_list[0],
-                            "principal": False
-                        })
     except Exception as e:
         print(f"[parser] Error al leer PDF {file}:", e)
 
-    print(f"[parser] Registros extraídos de {file}: {len(registros)}")
+    print(f"[parser] Líneas extraídas de {file}: {len(registros)}")
     for r in registros[:6]:
         print("[parser] Ej:", r)
     return registros
