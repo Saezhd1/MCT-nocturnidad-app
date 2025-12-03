@@ -1,4 +1,5 @@
 import pdfplumber
+import os
 
 def _in_range(xmid, xr, tol=2):
     return xr[0] - tol <= xmid <= xr[1] + tol
@@ -29,17 +30,20 @@ def _find_columns(page):
         hi_x    = (x0_page + 0.69 * width, x0_page + 0.81 * width)
         hf_x    = (x0_page + 0.81 * width, x0_page + 0.95 * width)
 
+    print(f"[parser] Columnas detectadas -> fecha:{fecha_x}, hi:{hi_x}, hf:{hf_x}")
     return {"fecha": fecha_x, "hi": hi_x, "hf": hf_x, "header_bottom": header_bottom}
 
 def parse_pdf(file):
     registros = []
     try:
         with pdfplumber.open(file) as pdf:
-            for page in pdf.pages:
+            for page_num, page in enumerate(pdf.pages, start=1):
+                print(f"\n[parser] Página {page_num}")
                 cols = _find_columns(page)
                 # Palabras con tolerancias pequeñas para que se agrupen por línea
                 words = page.extract_words(x_tolerance=2, y_tolerance=2, use_text_flow=False)
-
+                print(f"[parser] Palabras extraídas ({len(words)}): {[w['text'] for w in words]}")
+                
                 # Agrupar por línea (clave: y redondeada)
                 lines = {}
                 for w in words:
@@ -51,7 +55,8 @@ def parse_pdf(file):
                 # Ordenar por vertical
                 for y in sorted(lines.keys()):
                     row_words = sorted(lines[y], key=lambda k: k["x0"])
-
+                    print(f"[parser] Línea en y={y}: {[w['text'] for w in row_words]}")
+                    
                     fecha_tokens, hi_tokens, hf_tokens = [], [], []
                     for w in row_words:
                         t = (w.get("text") or "").strip()
@@ -68,6 +73,8 @@ def parse_pdf(file):
                     hi_raw = " ".join(hi_tokens).strip()
                     hf_raw = " ".join(hf_tokens).strip()
 
+                    print(f"[parser] Tokens -> fecha:'{fecha_val}', hi:'{hi_raw}', hf:'{hf_raw}'")
+                    
                     # ⚠️ Nuevo criterio: solo procesar si hay fecha explícita
                     if not fecha_val:
                         continue
@@ -102,6 +109,7 @@ def parse_pdf(file):
                             "hf": hf_list[0],
                             "principal": False
                         })
+        print(f"\n[parser] Total registros extraídos: {len(registros)}")
     except Exception as e:
         print("[parser] Error al leer PDF:", e)
     return registros
@@ -127,6 +135,7 @@ def parse_multiple_pdfs(files):
     for r in registros[:6]:
         print("[parser] Ej:", r)
     return registros
+
 
 
 
