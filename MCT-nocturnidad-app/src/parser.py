@@ -104,7 +104,8 @@ def parse_pdf(file):
                         })
     except Exception as e:
         print("[parser] Error al leer PDF:", e)
-
+    return registros
+    
 # 🔑 NUEVO: función para varios PDFs
 def parse_multiple_pdfs(files):
     """
@@ -120,11 +121,12 @@ def parse_multiple_pdfs(files):
         r["archivo"] = os.path.basename(f)
         resultados[f] = registros
         print(f"[parser] {len(registros)} registros extraídos de {os.path.basename(f)}")
-    return resultados
+    return registros
     
     print(f"[parser] Registros extraídos: {len(registros)}")
     for r in registros[:6]:
         print("[parser] Ej:", r)
     return registros
+
 
 
