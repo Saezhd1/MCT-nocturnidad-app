@@ -20,7 +20,7 @@ def upload():
 
     resultados = []
     for f in files:
-        regs = parse_pdf(f)
+        regs = parse_pdf(f)  # siempre devuelve lista, nunca None
         dias = calcular_nocturnidad_por_dia(regs)
         resultados.append({"filename": f.filename, "dias": dias})
 
@@ -45,4 +45,5 @@ def download():
     return send_file(buffer, as_attachment=True,
                      download_name="informe_nocturnidad.pdf",
                      mimetype="application/pdf")
+
 
