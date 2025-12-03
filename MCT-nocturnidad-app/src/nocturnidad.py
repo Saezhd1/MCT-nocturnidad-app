@@ -1,12 +1,21 @@
 from datetime import datetime
 
 def _parse_hhmm(s):
+    """
+    Convierte una cadena HH:MM en datetime.
+    Soporta horas extendidas como 24:00, 25:00, etc.
+    """
     try:
         h, m = s.split(":")
         h = int(h); m = int(m)
-        if 0 <= h <= 23 and 0 <= m <= 59:
-            return datetime.strptime(f"{h:02d}:{m:02d}", "%H:%M")
-    except:
+
+        if 0 <= m <= 59:
+            if h >= 24:
+                # Ajuste: horas extendidas se interpretan como día siguiente
+                return datetime.strptime(f"{h-24:02d}:{m:02d}", "%H:%M") + timedelta(days=1)
+            elif 0 <= h <= 23:
+                return datetime.strptime(f"{h:02d}:{m:02d}", "%H:%M")
+    except Exception:
         return None
     return None
 
@@ -18,10 +27,14 @@ def _tarifa_por_fecha(fecha_str):
     return 0.05 if f <= datetime(2025, 4, 25) else 0.062
 
 def _minutos_nocturnos(hi_dt, hf_dt):
+    """
+    Calcula minutos en tramos nocturnos:
+    - 22:00 a 24:59
+    - 04:00 a 06:00
+    """
     minutos = 0
     tramos = [
-        (datetime.strptime("22:00", "%H:%M"), datetime.strptime("23:59", "%H:%M")),
-        (datetime.strptime("00:00", "%H:%M"), datetime.strptime("00:59", "%H:%M")),
+        (datetime.strptime("22:00", "%H:%M"), datetime.strptime("24:59", "%H:%M")),
         (datetime.strptime("04:00", "%H:%M"), datetime.strptime("06:00", "%H:%M")),
     ]
     for ini, fin in tramos:
@@ -58,4 +71,5 @@ def calcular_nocturnidad_por_dia(registros):
             "principal": r.get("principal", True)
         })
     return resultados
+
 
