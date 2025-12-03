@@ -35,15 +35,13 @@ def _find_columns(page):
 
 def parse_pdf(file):
     registros = []
-    last_fecha = None
+    current_fecha = None
     try:
         with pdfplumber.open(file) as pdf:
-            for page_num, page in enumerate(pdf.pages, start=1):
-                print(f"\n[parser] Página {page_num}")
+            for page in pdf.pages:
                 cols = _find_columns(page)
                 # Palabras con tolerancias pequeñas para que se agrupen por línea
-                words = page.extract_words(x_tolerance=2, y_tolerance=2, use_text_flow=False)
-                print(f"[parser] Palabras extraídas ({len(words)}): {[w['text'] for w in words]}")
+                words = page.extract_words(x_tolerance=3, y_tolerance=3, use_text_flow=False)
                 
                 # Agrupar por línea (clave: y redondeada)
                 lines = {}
@@ -56,7 +54,6 @@ def parse_pdf(file):
                 # Ordenar por vertical
                 for y in sorted(lines.keys()):
                     row_words = sorted(lines[y], key=lambda k: k["x0"])
-                    print(f"[parser] Línea en y={y}: {[w['text'] for w in row_words]}")
                     
                     fecha_tokens, hi_tokens, hf_tokens = [], [], []
                     for w in row_words:
@@ -74,45 +71,27 @@ def parse_pdf(file):
                     hi_raw = " ".join(hi_tokens).strip()
                     hf_raw = " ".join(hf_tokens).strip()
 
-                    # Si hay fecha explícita, actualiza last_fecha
+                    # Si aparece una nueva fecha, actualiza el marcador
                     if fecha_val:
-                        last_fecha = fecha_val
+                        current_fecha = fecha_val
+                        continue  # no asociar horas en la misma línea que la fecha
                     
-                    # Usa la última fecha conocida si no hay fecha en esta línea
-                    if not fecha_val and last_fecha:
-                        fecha_val = last_fecha
+                    # Si hay horas y ya tenemos una fecha activa, asociarlas a esa fecha
+                    if current_fecha and (hi_raw or hf_raw):
+                        hi_list = [x for x in hi_raw.split() if ":" in x and x.count(":") == 1]
+                        hf_list = [x for x in hf_raw.split() if ":" in x and x.count(":") == 1]
 
-                    # Filtrar si no hay horas en ninguna columna
-                    if not (hi_raw or hf_raw): 
-                        continue
+                        # Asociar todas las combinaciones de HI y HF
+                        for hi in hi_list:
+                            for hf in hf_list:
+                                registros.append({
+                                    "fecha": current_fecha,
+                                    "hi": hi,
+                                    "hf": hf,
+                                    "principal": True
+                                })
 
-                    # Extraer horas HH:MM y descartar ruidos (00, números sueltos)
-                    hi_list = [x for x in hi_raw.split() if ":" in x and x.count(":") == 1]
-                    hf_list = [x for x in hf_raw.split() if ":" in x and x.count(":") == 1]
-
-                    if not hi_list or not hf_list:
-                        continue
-
-                    # Regla Daniel:
-                    # - Principal: HI arriba (índice 0) con HF abajo (último)
-                    # - Secundario: si hay dos, HI abajo (índice 1) con HF arriba (índice 0)
-                    principal_hi = hi_list[0]
-                    principal_hf = hf_list[-1]
-                    registros.append({
-                        "fecha": fecha_val,
-                        "hi": principal_hi,
-                        "hf": principal_hf,
-                        "principal": True
-                    })
-
-                    if len(hi_list) >= 2 and len(hf_list) >= 2:
-                        registros.append({
-                            "fecha": fecha_val,
-                            "hi": hi_list[1],
-                            "hf": hf_list[0],
-                            "principal": False
-                        })
-        print(f"\n[parser] Total registros extraídos: {len(registros)}")
+        print(f"[parser] Total registros extraídos: {len(registros)}")
     except Exception as e:
         print("[parser] Error al leer PDF:", e)
     return registros
@@ -138,6 +117,7 @@ def parse_multiple_pdfs(files):
     for r in registros[:6]:
         print("[parser] Ej:", r)
     return registros
+
 
 
 
