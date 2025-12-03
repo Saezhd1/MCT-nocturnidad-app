@@ -35,7 +35,6 @@ def parse_pdf(file):
     registros = []
     try:
         with pdfplumber.open(file) as pdf:
-            last_fecha = None
             for page in pdf.pages:
                 cols = _find_columns(page)
                 # Palabras con tolerancias pequeñas para que se agrupen por línea
@@ -69,11 +68,9 @@ def parse_pdf(file):
                     hi_raw = " ".join(hi_tokens).strip()
                     hf_raw = " ".join(hf_tokens).strip()
 
-                    # Heredar fecha en filas partida (rowspan visual)
-                    if not fecha_val and last_fecha:
-                        fecha_val = last_fecha
-                    elif fecha_val:
-                        last_fecha = fecha_val
+                    # ⚠️ Nuevo criterio: solo procesar si hay fecha explícita
+                    if not fecha_val:
+                        continue
 
                     # Filtrar si no hay horas en ninguna columna
                     if not (hi_raw or hf_raw): 
@@ -108,7 +105,25 @@ def parse_pdf(file):
     except Exception as e:
         print("[parser] Error al leer PDF:", e)
 
+# 🔑 NUEVO: función para varios PDFs
+def parse_multiple_pdfs(files):
+    """
+    files: lista de rutas de archivos PDF
+    Devuelve un diccionario con resultados por archivo
+    """
+    resultados = {}
+    for f in files:
+        print(f"[parser] Procesando: {os.path.basename(f)")
+        registros = parse_pdf(f)
+        # Añadir origen al registro
+    for r in registros:
+        r["archivo"] = os.path.basename(f)
+        resultados[f] = registros
+        print(f"[parser] {len(registros)} registros extraídos de {os.path.basename(f)}")
+    return resultados
+    
     print(f"[parser] Registros extraídos: {len(registros)}")
     for r in registros[:6]:
         print("[parser] Ej:", r)
     return registros
+
