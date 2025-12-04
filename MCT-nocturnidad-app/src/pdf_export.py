@@ -8,10 +8,14 @@ def _tabla_dias(resultados_por_pdf):
     rows = [["Archivo", "Fecha", "HI", "HF", "Minutos nocturnos", "Importe (€)"]]
     for doc in resultados_por_pdf:
         fn = doc['filename']
-        for d in doc['dias']:
-            #if d['minutos_nocturnos'] > 0: #Ahora se añaden todos los días, incluso con 0 minutos
-                rows.append([fn, d['fecha'], d['hi'], d['hf'],
-                             str(d['minutos_nocturnos']), d['importe']])
+        # Ordenamos los registros del día por fecha y hora de inicio
+        dias_ordenados = sorted(
+            doc['dias'],
+            key=lambda d: (d['fecha'], _parse_hhmm(d['hi']) or datetime.min)
+        )
+        for d in dias_ordenados:
+            rows.append([fn, d['fecha'], d['hi'], d['hf'],
+                         str(d['minutos_nocturnos']), d['importe']])
     return rows
 
 def _tabla_mes(resumen):
@@ -76,4 +80,5 @@ def exportar_pdf_informe(empleado, nombre, resultados, resumen):
     doc.build(story)
     buffer.seek(0)
     return buffer
+
 
