@@ -20,7 +20,6 @@
         </tr>
         {% for doc in resultados %}
             {% for d in doc.dias %}
-                {% if d.minutos_nocturnos > 0 %}
                 <tr>
                     <td>{{ doc.filename }}</td>
                     <td>{{ d.fecha }}</td>
@@ -29,7 +28,6 @@
                     <td style="text-align:right">{{ d.minutos_nocturnos }}</td>
                     <td style="text-align:right">{{ d.importe }}</td>
                 </tr>
-                {% endif %}
             {% endfor %}
         {% endfor %}
     </table>
@@ -60,3 +58,4 @@
     <p><a href="{{ url_for('download') }}">Descargar informe en PDF</a></p>
 </body>
 </html>
+
