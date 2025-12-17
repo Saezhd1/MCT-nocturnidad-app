@@ -15,7 +15,7 @@ def agregar_resumen(resultados_por_pdf):
 
             if minutos > 0 and fecha:
                 partes = fecha.split("/")
-                if len(partes) == 3:  # formato esperado dd/mm/yyyy
+                if len(partes) == 3:
                     dia, mes, anio = partes
                     clave = f"{mes}/{anio}"
 
@@ -33,5 +33,3 @@ def agregar_resumen(resultados_por_pdf):
                     print(f"[aggregator] Fecha inválida: {fecha}")
 
     return resumen
-
-
