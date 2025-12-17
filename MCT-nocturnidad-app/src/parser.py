@@ -1,37 +1,47 @@
+# parser.py
 import pdfplumber
-import os
+import re
 
-def _in_range(xmid, xr, tol=2):
-    return xr[0] - tol <= xmid <= xr[1] + tol
+def extraer_fechas_horas(pdf_path):
+    resultados = []
 
-def _find_columns(page):
-    """
-    Encuentra rangos X para columnas clave. Prioriza cabeceras reales; si falla, usa rangos fijos
-    ajustados a este modelo de TITSA.
-    """
-    words = page.extract_words(use_text_flow=True)
-    fecha_x = hi_x = hf_x = None
-    header_bottom = page.bbox[1] + 40  # altura aproximada bajo cabecera
+    # Abrimos el PDF
+    with pdfplumber.open(pdf_path) as pdf:
+        for pagina in pdf.pages:
+            texto = pagina.extract_text()
+            if not texto:
+                continue
 
-    for w in words:
-        t = (w.get("text") or "").strip().lower()
-        if t == "fecha":
-            fecha_x = (w["x0"], w["x1"]); header_bottom = max(header_bottom, w["bottom"])
-        elif t == "hi":
-            hi_x = (w["x0"], w["x1"]); header_bottom = max(header_bottom, w["bottom"])
-        elif t == "hf":
-            hf_x = (w["x0"], w["x1"]); header_bottom = max(header_bottom, w["bottom"])
+            # Dividimos por líneas
+            for linea in texto.split("\n"):
+                # Detectar fecha en formato dd/mm/yyyy
+                match_fecha = re.match(r"(\d{2}/\d{2}/\d{4})", linea)
+                if match_fecha:
+                    fecha = match_fecha.group(1)
 
-    # Fallback “hardcodeado” para este modelo si no encuentra cabeceras
-    if not (fecha_x and hi_x and hf_x):
-        x0_page, x1_page = page.bbox[0], page.bbox[2]
-        width = x1_page - x0_page
-        fecha_x = (x0_page + 0.06 * width, x0_page + 0.22 * width)
-        hi_x    = (x0_page + 0.69 * width, x0_page + 0.81 * width)
-        hf_x    = (x0_page + 0.81 * width, x0_page + 0.95 * width)
+                    # Buscar horarios en la línea (formato HH:MM)
+                    horarios = re.findall(r"\d{2}:\d{2}", linea)
 
-    print(f"[parser] Columnas detectadas -> fecha:{fecha_x}, hi:{hi_x}, hf:{hf_x}")
-    return {"fecha": fecha_x, "hi": hi_x, "hf": hf_x, "header_bottom": header_bottom}
+                    if len(horarios) >= 2:
+                        hi = horarios[0]  # primer horario
+                        hf = horarios[1]  # segundo horario
+                        resultados.append({
+                            "fecha": fecha,
+                            "HI": hi,
+                            "HF": hf
+                        })
+
+    return resultados
+
+
+if __name__ == "__main__":
+    archivo_pdf = "Realizado_agosto_2022_12832.pdf"  # cambia por tu ruta real
+    datos = extraer_fechas_horas(archivo_pdf)
+
+    # Mostrar resultados
+    for item in datos:
+        print(f"{item['fecha']} | HI: {item['HI']} | HF: {item['HF']}")
+
 
 def parse_pdf(file):
     registros = []
@@ -117,6 +127,7 @@ def parse_multiple_pdfs(files):
     for r in registros[:6]:
         print("[parser] Ej:", r)
     return registros
+
 
 
 
