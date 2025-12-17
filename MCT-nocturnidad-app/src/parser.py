@@ -1,16 +1,13 @@
 import pdfplumber
+import re
 
 def _in_range(xmid, xr, tol=2):
     return xr[0] - tol <= xmid <= xr[1] + tol
 
 def _find_columns(page):
-    """
-    Encuentra rangos X para columnas clave. Prioriza cabeceras reales; si falla, usa rangos fijos
-    ajustados a este modelo de TITSA.
-    """
     words = page.extract_words(use_text_flow=True)
     fecha_x = hi_x = hf_x = None
-    header_bottom = page.bbox[1] + 40  # altura aproximada bajo cabecera
+    header_bottom = page.bbox[1] + 40  # fallback
 
     for w in words:
         t = (w.get("text") or "").strip().lower()
@@ -21,7 +18,7 @@ def _find_columns(page):
         elif t == "hf":
             hf_x = (w["x0"], w["x1"]); header_bottom = max(header_bottom, w["bottom"])
 
-    # Fallback “hardcodeado” para este modelo si no encuentra cabeceras
+    # Fallback si no encuentra cabeceras (ajustado al modelo)
     if not (fecha_x and hi_x and hf_x):
         x0_page, x1_page = page.bbox[0], page.bbox[2]
         width = x1_page - x0_page
@@ -29,19 +26,35 @@ def _find_columns(page):
         hi_x    = (x0_page + 0.69 * width, x0_page + 0.81 * width)
         hf_x    = (x0_page + 0.81 * width, x0_page + 0.95 * width)
 
+    # Margen adicional bajo cabeceras
+    header_bottom += 4
     return {"fecha": fecha_x, "hi": hi_x, "hf": hf_x, "header_bottom": header_bottom}
+
+def _horas_validas(tokens):
+    return [x for x in tokens.split() if x.count(":") == 1]
+
+def _normalizar_hora(hhmm):
+    # Convierte "27:00" -> "03:00" sin cambiar fecha
+    try:
+        hh, mm = hhmm.split(":")
+        hh_i, mm_i = int(hh), int(mm)
+        hh_i = hh_i % 24
+        return f"{hh_i:02d}:{mm_i:02d}"
+    except Exception:
+        return hhmm
 
 def parse_pdf(file):
     registros = []
     try:
         with pdfplumber.open(file) as pdf:
             last_fecha = None
+            pending_rows = []  # filas con horas pero sin fecha; se asignan a la próxima fecha válida
+
             for page in pdf.pages:
                 cols = _find_columns(page)
-                # Palabras con tolerancias pequeñas para que se agrupen por línea
                 words = page.extract_words(x_tolerance=2, y_tolerance=2, use_text_flow=False)
 
-                # Agrupar por línea (clave: y redondeada)
+                # Agrupar por y
                 lines = {}
                 for w in words:
                     if w["top"] <= cols["header_bottom"]:
@@ -49,7 +62,6 @@ def parse_pdf(file):
                     y_key = round(w["top"], 1)
                     lines.setdefault(y_key, []).append(w)
 
-                # Ordenar por vertical
                 for y in sorted(lines.keys()):
                     row_words = sorted(lines[y], key=lambda k: k["x0"])
 
@@ -64,47 +76,63 @@ def parse_pdf(file):
                         elif _in_range(xmid, cols["hf"]):
                             hf_tokens.append(t)
 
-                    # Consolidar
                     fecha_val = " ".join(fecha_tokens).strip()
                     hi_raw = " ".join(hi_tokens).strip()
                     hf_raw = " ".join(hf_tokens).strip()
 
-                    # Heredar fecha en filas partida (rowspan visual)
-                    if not fecha_val and last_fecha:
-                        fecha_val = last_fecha
-                    elif fecha_val:
+                    hi_list = _horas_validas(hi_raw)
+                    hf_list = _horas_validas(hf_raw)
+
+                    # Si hay nueva fecha, actualizar y volcar pendientes
+                    if fecha_val:
                         last_fecha = fecha_val
+                        # Volcar cualquier fila pendiente asociándola a esta fecha
+                        for pr in pending_rows:
+                            pr["fecha"] = last_fecha
+                            registros.append(pr)
+                        pending_rows = []
 
-                    # Filtrar si no hay horas en ninguna columna
-                    if not (hi_raw or hf_raw): 
+                    # Si no hay horas, saltar
+                    if not (hi_list or hf_list):
                         continue
 
-                    # Extraer horas HH:MM y descartar ruidos (00, números sueltos)
-                    hi_list = [x for x in hi_raw.split() if ":" in x and x.count(":") == 1]
-                    hf_list = [x for x in hf_raw.split() if ":" in x and x.count(":") == 1]
+                    # Normalizar horas
+                    hi_list = [_normalizar_hora(x) for x in hi_list]
+                    hf_list = [_normalizar_hora(x) for x in hf_list]
 
-                    if not hi_list or not hf_list:
-                        continue
+                    # Regla principal/secundaria de Daniel
+                    if hi_list and hf_list:
+                        # Principal
+                        principal_hi = hi_list[0]
+                        principal_hf = hf_list[-1]
+                        row = {
+                            "fecha": last_fecha if last_fecha else "",  # se corregirá vía buffer si aún no hay fecha
+                            "hi": principal_hi,
+                            "hf": principal_hf,
+                            "principal": True
+                        }
+                        if last_fecha:
+                            registros.append(row)
+                        else:
+                            pending_rows.append(row)
 
-                    # Regla Daniel:
-                    # - Principal: HI arriba (índice 0) con HF abajo (último)
-                    # - Secundario: si hay dos, HI abajo (índice 1) con HF arriba (índice 0)
-                    principal_hi = hi_list[0]
-                    principal_hf = hf_list[-1]
-                    registros.append({
-                        "fecha": fecha_val,
-                        "hi": principal_hi,
-                        "hf": principal_hf,
-                        "principal": True
-                    })
+                        # Secundaria si hay dos y dos
+                        if len(hi_list) >= 2 and len(hf_list) >= 2:
+                            row2 = {
+                                "fecha": last_fecha if last_fecha else "",
+                                "hi": hi_list[1],
+                                "hf": hf_list[0],
+                                "principal": False
+                            }
+                            if last_fecha:
+                                registros.append(row2)
+                            else:
+                                pending_rows.append(row2)
 
-                    if len(hi_list) >= 2 and len(hf_list) >= 2:
-                        registros.append({
-                            "fecha": fecha_val,
-                            "hi": hi_list[1],
-                            "hf": hf_list[0],
-                            "principal": False
-                        })
+            # Si quedan pendientes al final del documento sin fecha, no emitirlos
+            if pending_rows:
+                print(f"[parser] Filas pendientes descartadas por falta de fecha: {len(pending_rows)}")
+
     except Exception as e:
         print("[parser] Error al leer PDF:", e)
 
