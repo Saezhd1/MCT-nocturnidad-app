@@ -1,6 +1,6 @@
 import re
-from datetime import datetime
 import pdfplumber
+from datetime import datetime
 
 def extraer_horas(cell):
     """Devuelve todas las horas válidas encontradas en una celda multilínea."""
@@ -31,15 +31,26 @@ def parse_pdf(path_pdf):
                 hi_vals = extraer_horas(row[1] or "")
                 hf_vals = extraer_horas(row[2] or "")
 
-                for hi_str, hf_str in zip(hi_vals, hf_vals):
+                # Validación: si faltan horas, saltamos la fila
+                if not hi_vals or not hf_vals:
+                    continue
+
+                # Emparejar todas las horas posibles
+                max_pairs = min(len(hi_vals), len(hf_vals))
+                for i in range(max_pairs):
                     registros.append({
                         "fecha": fecha_str,
-                        "HI": hi_str,
-                        "HF": hf_str
+                        "HI": hi_vals[i],
+                        "HF": hf_vals[i]
                     })
+
+                # Advertencia opcional si hay desajuste
+                if len(hi_vals) != len(hf_vals):
+                    print(f"Advertencia: desajuste en {fecha_str} (HI={hi_vals}, HF={hf_vals})")
+
     return registros
 
-# Ejemplo de uso
+# --- Ejemplo de uso ---
 if __name__ == "__main__":
     datos = parse_pdf("octubre.pdf")
     for d in datos:
