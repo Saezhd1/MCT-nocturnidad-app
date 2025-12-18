@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, time
-from src.parser import parse_pdf
+from parser import parse_pdf
 
 # --- Definición de franjas de nocturnidad ---
 FRANJAS_NOCTURNIDAD = [
@@ -52,6 +52,9 @@ def calcular_nocturnidad(path_pdf, precio_minuto=0.5):
         })
     return resultados
 
+# --- Alias para compatibilidad con app.py ---
+calcular_nocturnidad_por_dia = calcular_nocturnidad
+
 # --- Exportación HTML ---
 def generar_html(resultados, output_path="resultados.html"):
     """Genera un informe HTML con los resultados de nocturnidad."""
@@ -71,4 +74,3 @@ if __name__ == "__main__":
     for d in datos:
         print(d)
     generar_html(datos, "resultados_octubre.html")
-
