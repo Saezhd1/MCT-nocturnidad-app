@@ -1,109 +1,73 @@
-from datetime import datetime
+from datetime import datetime, timedelta, time
+from parser import parse_pdf
 
-def _parse_hhmm(s, base_date=None):
-    """
-    Convierte una cadena HH:MM en datetime.
-    - Si la hora es >= 24, se convierte en hora del día siguiente.
-    - El campo 'fecha' del registro se mantiene igual (la del PDF).
-    """
-    try:
-        h, m = s.split(":")
-        h = int(h); m = int(m)
+# --- Definición de franjas de nocturnidad ---
+FRANJAS_NOCTURNIDAD = [
+    (time(4,0), time(6,0)),     # tramo 1: 04:00–06:00
+    (time(22,0), time(0,59))    # tramo 2: 22:00–00:59
+]
 
-        if 0 <= m <= 59:
-            if h >= 24:
-                # Ajuste: horas extendidas -> día siguiente
-                dt = datetime.strptime(f"{h-24:02d}:{m:02d}", "%H:%M")
-                return dt + timedelta(days=1)
-            elif 0 <= h <= 23:
-                return datetime.strptime(f"{h:02d}:{m:02d}", "%H:%M")
-    except Exception:
-        return None
-    return None
+# --- Funciones auxiliares ---
+def parse_hora(hora_str, fecha):
+    """Convierte 'HH:MM' en datetime con la fecha dada."""
+    return datetime.combine(fecha, datetime.strptime(hora_str, "%H:%M").time())
 
-def _tarifa_por_fecha(fecha_str):
-    try:
-        f = datetime.strptime(fecha_str, "%d/%m/%Y")
-    except:
-        f = datetime.today()
-    return 0.05 if f <= datetime(2025, 4, 25) else 0.062
+def minutos_nocturnos(hi, hf):
+    """Calcula minutos dentro de las franjas de nocturnidad especificadas."""
+    total = 0
+    for inicio_franja, fin_franja in FRANJAS_NOCTURNIDAD:
+        noct_start = hi.replace(hour=inicio_franja.hour, minute=inicio_franja.minute)
+        noct_end = hi.replace(hour=fin_franja.hour, minute=fin_franja.minute)
+        # Si la franja cruza medianoche, sumamos un día
+        if noct_end <= noct_start:
+            noct_end += timedelta(days=1)
 
-def _minutos_nocturnos(hi_dt, hf_dt):
-    """
-    Calcula minutos en tramos nocturnos oficiales:
-    - 22:00 a 24:59 (se interpreta como hasta 00:59 del día siguiente)
-    - 04:00 a 06:00
-    """
-    minutos = 0
-    tramos = [
-        (_parse_hhmm("22:00"), _parse_hhmm("24:59")),  # aquí usamos _parse_hhmm
-        (_parse_hhmm("04:00"), _parse_hhmm("06:00")),
-    ]
-    for ini, fin in tramos:
-        # Ignorar tramos inválidos
-        if not ini or not fin:
-            continue
-        if hi_dt < fin and hf_dt > ini:
-            inter_ini = max(hi_dt, ini)
-            inter_fin = min(hf_dt, fin)
-            if inter_ini < inter_fin:
-                minutos += int((inter_fin - inter_ini).total_seconds() / 60)
-    return minutos
+        inicio = max(hi, noct_start)
+        fin = min(hf, noct_end)
+        if inicio < fin:
+            total += int((fin - inicio).total_seconds() / 60)
+    return total
 
-def calcular_nocturnidad_por_dia(registros):
-    """
-    Calcula minutos nocturnos y el importe por cada día.
-    La fecha mostrada siempre es la original del PDF.
-    """
+def calcular_nocturnidad(path_pdf, precio_minuto=0.5):
+    """Procesa el PDF y calcula minutos e importe de nocturnidad."""
+    registros = parse_pdf(path_pdf)
     resultados = []
+
     for r in registros:
-        hi_dt = _parse_hhmm(r["hi"]) if r.get("hi") else None
-        hf_dt = _parse_hhmm(r["hf"]) if r.get("hf") else None
+        fecha = datetime.strptime(r["fecha"], "%d/%m/%Y").date()
+        hi = parse_hora(r["HI"], fecha)
+        hf = parse_hora(r["HF"], fecha)
+        if hf < hi:
+            hf += timedelta(days=1)
 
-        minutos = 0
-        if hi_dt and hf_dt:
-            minutos = _minutos_nocturnos(hi_dt, hf_dt)
-
-        tarifa = _tarifa_por_fecha(r["fecha"])
+        noct = minutos_nocturnos(hi, hf)
+        importe = noct * precio_minuto
 
         resultados.append({
-            "fecha": r["fecha"],   # siempre la fecha original del PDF
-            "hi": r.get("hi", ""), # si está vacío, se muestra vacío
-            "hf": r.get("hf", ""),
-            "minutos_nocturnos": minutos,
-            "importe": f"{minutos * tarifa:.2f}",
-            "principal": r.get("principal", True)
+            "fecha": r["fecha"],
+            "HI": r["HI"],
+            "HF": r["HF"],
+            "minutos_nocturnos": noct,
+            "importe": round(importe, 2)
         })
-
-    # Ordenar por fecha y hora de inicio (si existe)
-    resultados.sort(key=lambda d: (d["fecha"], _parse_hhmm(d["hi"]) or datetime.min))
     return resultados
-    
-def _tabla_mes(resumen):
-    """
-    Construye la tabla de resumen mensual a partir del diccionario 'resumen'.
-    Se espera que 'resumen' tenga una clave 'mensual' con datos por mes.
-    """
-    rows = [["Mes", "Minutos nocturnos", "Importe (€)"]]
-    for mes, datos in resumen.get("mensual", {}).items():
-        rows.append([
-            mes,
-            str(datos.get("minutos", 0)),
-            f"{datos.get('importe', 0.0):.2f}"
-        ])
-    return rows
 
+# --- Exportación HTML ---
+def generar_html(resultados, output_path="resultados.html"):
+    """Genera un informe HTML con los resultados de nocturnidad."""
+    html = "<html><head><meta charset='utf-8'><title>Resultados Nocturnidad</title></head><body>"
+    html += "<h1>Resultados de Nocturnidad</h1>"
+    html += "<table border='1'><tr><th>Fecha</th><th>HI</th><th>HF</th><th>Minutos Nocturnos</th><th>Importe (€)</th></tr>"
+    for r in resultados:
+        html += f"<tr><td>{r['fecha']}</td><td>{r['HI']}</td><td>{r['HF']}</td><td>{r['minutos_nocturnos']}</td><td>{r['importe']}</td></tr>"
+    html += "</table></body></html>"
 
-def _tabla_global(resumen):
-    """
-    Construye la tabla de resumen global a partir del diccionario 'resumen'.
-    Se espera que 'resumen' tenga una clave 'global' con totales.
-    """
-    rows = [["Total minutos nocturnos", "Total importe (€)"]]
-    global_data = resumen.get("global", {})
-    rows.append([
-        str(global_data.get("minutos", 0)),
-        f"{global_data.get('importe', 0.0):.2f}"
-    ])
-    return rows
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(html)
 
+# --- Ejemplo de uso ---
+if __name__ == "__main__":
+    datos = calcular_nocturnidad("octubre.pdf", precio_minuto=0.5)
+    for d in datos:
+        print(d)
+    generar_html(datos, "resultados_octubre.html")
