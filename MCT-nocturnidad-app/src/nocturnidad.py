@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, time
-from parser import parse_pdf
+from src.parser import parse_pdf   # Import corregido para Render
 
 # --- Definición de franjas de nocturnidad ---
 FRANJAS_NOCTURNIDAD = [
